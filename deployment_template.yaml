@@ -769,7 +769,17 @@ Resources:
   DashFetchSfn:
     Type: "AWS::StepFunctions::StateMachine"
     DependsOn:
-      - * all the lambdas *
+      - CAAutomationAPIHandler
+      - CAAutomationCheckDatabase
+      - CAAutomationCheckClipStatus
+      - CAAutomationCreateChannel
+      - CAAutomationCreatePrograms
+      - CAAutomationCreateSources
+      - CAAutomationListTranslator
+      - CAAutomationStartChannel
+      - CAAutomationStatusCheck
+      - CAAutomationSubmitTranscode
+      - CAAutomationSubmitPackage
     Properties:
       StateMachineName: !Sub ${AWS::StackName}-CAAutomation-StepFunction
       RoleArn: !GetAtt StepFunctionServiceRole.Arn
