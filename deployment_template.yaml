@@ -177,7 +177,6 @@ Resources:
       Timeout: 10
       MemorySize: 10240
       Layers:
-        - !Ref LambdaLayerThreeFive
         - !Ref LambdaLayerXMLtoDict
       Code:
         S3Bucket: !Ref S3Bucket
@@ -194,7 +193,6 @@ Resources:
       - LambdaRole
       - FileCopier
       - FileMover
-      - LambdaLayerThreeFive
       - LambdaLayerXMLtoDict
 
   POISControl:
