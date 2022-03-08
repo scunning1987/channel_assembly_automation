@@ -184,8 +184,8 @@ Resources:
         S3Key: !GetAtt FileMover.esam-processor
       Environment:
         Variables:
-          CHANNELDB: !Ref POISDatabaseChannel
-          SCHEDULEDB: !Ref POISDatabaseSchedule
+          CHANNELDB: x
+          SCHEDULEDB: y
       Tags:
         - Key: StackName
           Value: !Ref AWS::StackName
@@ -214,8 +214,8 @@ Resources:
       Environment:
         Variables:
           BUCKET: !Ref S3Bucket
-          CHANNELDB: !Ref POISDatabaseChannel
-          SCHEDULEDB: !Ref POISDatabaseSchedule
+          CHANNELDB: x
+          SCHEDULEDB: y
       Tags:
         - Key: StackName
           Value: !Ref AWS::StackName
