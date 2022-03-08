@@ -134,7 +134,6 @@ Resources:
   StepFunctionServiceRolePolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: !Sub "${DeploymentName}-step-function-service-role-policy"
       Description: Policy that provides ability to services to call state machines and lambdas
       Roles:
         - !Ref StepFunctionServiceRole
@@ -173,7 +172,7 @@ Resources:
             Action:
               - states:StartExecution
             Resource:
-              - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${DeploymentName}-*
+              - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:{AWS::StackName}-CAAutomation-StepFunction
 
   MediaPackagePassRolePolicy:
     Type: AWS::IAM::Policy
