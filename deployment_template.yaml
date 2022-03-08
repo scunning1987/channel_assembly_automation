@@ -84,8 +84,132 @@ Resources:
             Resource:
               - !GetAtt ContentDatabase.Arn
               - !GetAtt APIRequestDatabase.Arn
+          - Effect: Allow
+            Action:
+              - mediapackage-vod:CreateAsset
+              - mediapackage-vod:DeleteAsset
+              - mediapackage-vod:DescribeAsset
+              - mediapackage-vod:ListAssets
+            Resource:
+              - !Sub arn:aws:mediapackage-vod:${AWS::Region}:${AWS::AccountId}:*
+          - Effect: Allow
+            Action:
+              - mediapackage-vod:ListAssets
+            Resource:
+              - !Sub arn:aws:mediapackage-vod:${AWS::Region}:${AWS::AccountId}:assets/*
+          - Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:PassRole
+            Resource:
+              - !GetAtt EMPSourceRole.Arn
+
+  EMPSourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - mediapackage.amazonaws.com
+            Action:
+              - sts:AssumeRole
 
     DependsOn: S3Bucket
+
+  StepFunctionServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  StepFunctionServiceRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${DeploymentName}-step-function-service-role-policy"
+      Description: Policy that provides ability to services to call state machines and lambdas
+      Roles:
+        - !Ref StepFunctionServiceRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource:
+              - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*
+          - Effect: Allow
+            Action:
+              - states:*
+            Resource:
+              - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:*
+
+  StepFunctionStartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  Policies:
+    - PolicyName: !Sub "${AWS::StackName}-${AWS::Region}-start-exec-sfn-role-policy"
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${DeploymentName}-*
+
+  MediaPackagePassRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      Roles:
+        - !Ref LambdaRole
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:PassRole
+            Resource:
+              - !GetAtt EMPSourceRole.Arn
+
+  MediaPackageVodAccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      Roles:
+        - !Ref EmpIngestLambdaRole
+      PolicyName: !Sub "${DeploymentName}-mediapackage-vod-access-policy"
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - mediapackage-vod:CreateAsset
+              - mediapackage-vod:DeleteAsset
+              - mediapackage-vod:DescribeAsset
+              - mediapackage-vod:ListAssets
+            Resource:
+              - !Sub arn:aws:mediapackage-vod:${AWS::Region}:${AWS::AccountId}:*
+          - Effect: Allow
+            Action:
+              - mediapackage-vod:ListAssets
+            Resource:
+              - !Sub arn:aws:mediapackage-vod:${AWS::Region}:${AWS::AccountId}:assets/*
 
   APIGatewayCWatchLoggingRole:
     Type: AWS::IAM::Role
@@ -160,7 +284,7 @@ Resources:
   CAAutomationAPIHandler:
     Type: AWS::Lambda::Function
     Properties:
-      Description: Lambda to handle ESAM requests and responses
+      Description: Lambda to handle API requests for LIST updates
       Role: !GetAtt LambdaRole.Arn
       Runtime: python3.8
       Handler: index.lambda_handler
@@ -173,8 +297,8 @@ Resources:
         S3Key: !GetAtt FileMover.ca_automation_api_handler
       Environment:
         Variables:
-          CHANNELDB: x
-          SCHEDULEDB: y
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
       Tags:
         - Key: StackName
           Value: !Ref AWS::StackName
@@ -185,25 +309,22 @@ Resources:
       - FileMover
       - LambdaLayerXMLtoDict
 
-  POISControl:
+  CAAutomationCheckClipStatus:
     Type: AWS::Lambda::Function
     Properties:
-      Description: Function that handles API request to populate and configure POIS reference server
+      Description: Lambda to check the status of a clip through video supply chain
       Role: !GetAtt LambdaRole.Arn
       Runtime: python3.8
       Handler: index.lambda_handler
-      Timeout: 10
+      Timeout: 300
       MemorySize: 10240
-      Layers:
-        - !Ref LambdaLayerXMLtoDict
       Code:
         S3Bucket: !Ref S3Bucket
-        S3Key: !GetAtt FileMover.ca_automation_api_handler
+        S3Key: !GetAtt FileMover.ca_automation_check_clip_status
       Environment:
         Variables:
-          BUCKET: !Ref S3Bucket
-          CHANNELDB: x
-          SCHEDULEDB: y
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
       Tags:
         - Key: StackName
           Value: !Ref AWS::StackName
@@ -213,6 +334,234 @@ Resources:
       - FileCopier
       - FileMover
       - LambdaLayerXMLtoDict
+
+  CAAutomationCheckDatabase:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to check if clip is already in database
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 300
+      MemorySize: 10240
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_check_database
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
+  CAAutomationCreateChannel:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to create Channel Assembly channel, or update existing
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 300
+      MemorySize: 10240
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_create_channel
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
+  CAAutomationCreatePrograms:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to create programs for a channel assembly channel
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 300
+      MemorySize: 10240
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_create_programs
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
+  CAAutomationCreateSources:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to create sources for MediaTailor channel assembly
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 300
+      MemorySize: 10240
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_create_sources
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
+  CAAutomationListTranslator:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to translate broadcast automation list to mediatailor compatible playlist json
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 300
+      MemorySize: 10240
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_list_translator
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
+  CAAutomationStartChannel:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to start channel after creation
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 10
+      MemorySize: 10240
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_start_channel
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
+  CAAutomationStatusCheck:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to start channel after creation
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 10
+      MemorySize: 10240
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_status_check
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
+  CAAutomationSubmitPackage:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to start channel after creation
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 10
+      MemorySize: 10240
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_submit_package
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
+  CAAutomationSubmitTranscode:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Lambda to start channel after creation
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Timeout: 10
+      MemorySize: 10240
+      Layers:
+        - !Ref LambdaLayerXMLtoDict
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !GetAtt FileMover.ca_automation_submit_transcode
+      Environment:
+        Variables:
+          CONTENTDB: !Ref ContentDatabase
+          APIREQDB: !Ref APIRequestDatabase
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - S3Bucket
+      - LambdaRole
+      - FileCopier
+      - FileMover
+
 
   FileCopier:
     Type: AWS::Lambda::Function
@@ -413,6 +762,409 @@ Resources:
       LayerName: xmltodictlibrary
       LicenseInfo: https://raw.githubusercontent.com/martinblech/xmltodict/master/LICENSE
 
+  #################################
+  # Step Functions
+  #################################
+
+  DashFetchSfn:
+    Type: "AWS::StepFunctions::StateMachine"
+    DependsOn:
+      - * all the lambdas *
+    Properties:
+      StateMachineName: !Sub ${AWS::StackName}-CAAutomation-StepFunction
+      RoleArn: !GetAtt StepFunctionServiceRole.Arn
+      DefinitionString: !Sub
+        |-
+
+        {
+          "Comment": "Broadcast automation to EMT CA translator and video supply chain",
+          "StartAt": "List Parser",
+          "States": {
+            "List Parser": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "OutputPath": "$.Payload",
+              "Parameters": {
+                "Payload.$": "$",
+                "FunctionName": "arn:aws:lambda:us-west-2:301520684698:function:ca_api_handler:$LATEST"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "Next": "Parallel"
+            },
+            "Parallel": {
+              "Type": "Parallel",
+              "Branches": [
+                {
+                  "StartAt": "List Translator",
+                  "States": {
+                    "List Translator": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${CAAutomationAPIHandler.Arn}"
+                      },
+                      "Retry": [
+                        {
+                          "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException"
+                          ],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 6,
+                          "BackoffRate": 2
+                        }
+                      ],
+                      "Next": "CA Create Channel"
+                    },
+                    "CA Create Channel": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${CAAutomationListTranslator.Arn}"
+                      },
+                      "Retry": [
+                        {
+                          "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException"
+                          ],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 6,
+                          "BackoffRate": 2
+                        }
+                      ],
+                      "Next": "Wait for Video Pipeline"
+                    },
+                    "Wait for Video Pipeline": {
+                      "Type": "Wait",
+                      "Seconds": 120,
+                      "Next": "Video Pipeline Check"
+                    },
+                    "Video Pipeline Check": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${CAAutomationCheckClipStatus.Arn}"
+                      },
+                      "Retry": [
+                        {
+                          "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException"
+                          ],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 6,
+                          "BackoffRate": 2
+                        }
+                      ],
+                      "Next": "Video Pipeline Complete Check"
+                    },
+                    "Video Pipeline Complete Check": {
+                      "Type": "Choice",
+                      "Choices": [
+                        {
+                          "Not": {
+                            "Variable": "$.workflow_state.all_complete",
+                            "BooleanEquals": true
+                          },
+                          "Next": "CA Create Programs"
+                        }
+                      ],
+                      "Default": "Wait for Video Pipeline"
+                    },
+                    "CA Create Programs": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${CAAutomationCreatePrograms.Arn}"
+                      },
+                      "Retry": [
+                        {
+                          "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException"
+                          ],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 6,
+                          "BackoffRate": 2
+                        }
+                      ],
+                      "Next": "Start Channel"
+                    },
+                    "Start Channel": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:states:::lambda:invoke",
+                      "OutputPath": "$.Payload",
+                      "Parameters": {
+                        "Payload.$": "$",
+                        "FunctionName": "${CAAutomationStartChannel.Arn}"
+                      },
+                      "Retry": [
+                        {
+                          "ErrorEquals": [
+                            "Lambda.ServiceException",
+                            "Lambda.AWSLambdaException",
+                            "Lambda.SdkClientException"
+                          ],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 6,
+                          "BackoffRate": 2
+                        }
+                      ],
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "Map",
+                  "States": {
+                    "Map": {
+                      "Type": "Map",
+                      "Iterator": {
+                        "StartAt": "DB Check",
+                        "States": {
+                          "DB Check": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${CAAutomationCheckDatabase.Arn}"
+                            },
+                            "Retry": [
+                              {
+                                "ErrorEquals": [
+                                  "Lambda.ServiceException",
+                                  "Lambda.AWSLambdaException",
+                                  "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                              }
+                            ],
+                            "Next": "Is Video New Or Not"
+                          },
+                          "Is Video New Or Not": {
+                            "Type": "Choice",
+                            "Choices": [
+                              {
+                                "Not": {
+                                  "Variable": "$.DBCheck",
+                                  "StringMatches": "Exists"
+                                },
+                                "Next": "Transcode Submit"
+                              }
+                            ],
+                            "Default": "Check Status"
+                          },
+                          "Transcode Submit": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${CAAutomationSubmitTranscode.Arn}"
+                            },
+                            "Retry": [
+                              {
+                                "ErrorEquals": [
+                                  "Lambda.ServiceException",
+                                  "Lambda.AWSLambdaException",
+                                  "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                              }
+                            ],
+                            "Next": "Wait for Transcode"
+                          },
+                          "Wait for Transcode": {
+                            "Type": "Wait",
+                            "Seconds": 120,
+                            "Next": "Transcode Status Check"
+                          },
+                          "Transcode Status Check": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${CAAutomationStatusCheck.Arn}"
+                            },
+                            "Retry": [
+                              {
+                                "ErrorEquals": [
+                                  "Lambda.ServiceException",
+                                  "Lambda.AWSLambdaException",
+                                  "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                              }
+                            ],
+                            "Next": "Transcode Complete Check"
+                          },
+                          "Transcode Complete Check": {
+                            "Type": "Choice",
+                            "Choices": [
+                              {
+                                "Not": {
+                                  "Variable": "$.workflow_state.transcode_complete",
+                                  "BooleanEquals": true
+                                },
+                                "Next": "JITP Submit"
+                              }
+                            ],
+                            "Default": "Wait for Transcode"
+                          },
+                          "JITP Submit": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${CAAutomationSubmitPackage.Arn}"
+                            },
+                            "Retry": [
+                              {
+                                "ErrorEquals": [
+                                  "Lambda.ServiceException",
+                                  "Lambda.AWSLambdaException",
+                                  "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                              }
+                            ],
+                            "Next": "Wait for Package"
+                          },
+                          "Wait for Package": {
+                            "Type": "Wait",
+                            "Seconds": 120,
+                            "Next": "Package Status Check"
+                          },
+                          "Package Status Check": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${CAAutomationStatusCheck.Arn}"
+                            },
+                            "Retry": [
+                              {
+                                "ErrorEquals": [
+                                  "Lambda.ServiceException",
+                                  "Lambda.AWSLambdaException",
+                                  "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                              }
+                            ],
+                            "Next": "Package Complete Check"
+                          },
+                          "Package Complete Check": {
+                            "Type": "Choice",
+                            "Choices": [
+                              {
+                                "Not": {
+                                  "Variable": "$.workflow_state.package_complete",
+                                  "BooleanEquals": true
+                                },
+                                "Next": "Create SA Sources"
+                              }
+                            ],
+                            "Default": "Wait for Package"
+                          },
+                          "Create SA Sources": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${CAAutomationCreateSources.Arn}"
+                            },
+                            "Retry": [
+                              {
+                                "ErrorEquals": [
+                                  "Lambda.ServiceException",
+                                  "Lambda.AWSLambdaException",
+                                  "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                              }
+                            ],
+                            "End": true
+                          },
+                          "Check Status": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "OutputPath": "$.Payload",
+                            "Parameters": {
+                              "Payload.$": "$",
+                              "FunctionName": "${CAAutomationStatusCheck.Arn}"
+                            },
+                            "Retry": [
+                              {
+                                "ErrorEquals": [
+                                  "Lambda.ServiceException",
+                                  "Lambda.AWSLambdaException",
+                                  "Lambda.SdkClientException"
+                                ],
+                                "IntervalSeconds": 2,
+                                "MaxAttempts": 6,
+                                "BackoffRate": 2
+                              }
+                            ],
+                            "End": true
+                          }
+                        }
+                      },
+                      "End": true
+                    }
+                  }
+                }
+              ],
+              "Next": "Pass"
+            },
+            "Pass": {
+              "Type": "Pass",
+              "End": true
+            }
+          }
+        }
+
     #################
     ## API Gateway
     #################
@@ -534,6 +1286,30 @@ Resources:
     Type: AWS::ApiGateway::Account
     Properties:
       CloudWatchRoleArn: !GetAtt APIGatewayCWatchLoggingRole.Arn
+
+
+  #################
+  ## EventBridge
+  #################
+
+  StepFunctionsInitiate:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Event Bridge to start Step Functions Workflow
+      EventPattern: {
+        "source": [
+            "aws.lambda",
+            "lambda.amazonaws.com"
+        ],
+        "detail-type": [
+            "StepFunctions Initialize"
+        ]
+        }
+      Targets:
+        - Arn: !Sub >-
+            arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:{AWS::StackName}-CAAutomation-StepFunction
+          RoleArn: !GetAtt StepFunctionStartExecutionRole.Arn
+          Id: CAAutomationStepFunctionsInitiate
 
 #################################
 # Outputs
