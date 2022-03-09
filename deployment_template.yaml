@@ -49,7 +49,7 @@ Resources:
           Value: !Ref AWS::StackName
 
   ## IAM Policy
-  S3AccessPolicy:
+  LambdaAccessPolicy:
     Type: AWS::IAM::Policy
     Properties:
       Roles:
@@ -103,6 +103,12 @@ Resources:
               - iam:PassRole
             Resource:
               - !GetAtt EMPSourceRole.Arn
+          - Effect: Allow
+            Action:
+              - mediatailor:*
+            Resource:
+              - !Sub arn:aws:mediatailor:${AWS::Region}:${AWS::AccountId}:*
+
 
   EMPSourceRole:
     Type: AWS::IAM::Role
@@ -725,7 +731,7 @@ Resources:
     DependsOn:
       - S3Bucket
       - LambdaRole
-      - S3AccessPolicy
+      - LambdaAccessPolicy
 
   LambdaLayerXMLtoDict:
     Type: AWS::Lambda::LayerVersion

@@ -1,28 +1,60 @@
 import json
 import logging
 import uuid
+import boto3
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
 def lambda_handler(event, context):
     LOGGER.info(event)
-    # TODO implement
 
+
+    # boto3 client initialization
+    emt_client = boto3.client('mediatailor')
+
+    # API Response template
     def api_response(response_code,response_body):
         return {
             'statusCode': response_code,
             'body': json.dumps(response_body)
         }
 
-    # Path in API call
-    path = event['path']
+    # DB call to see if channel exists
+    # def dbGetSingleChannelInfo(channeldb,channel):
+    #     LOGGER.debug("Doing a call to Dynamo to get channel information for channel : %s" % (channel))
+    #     try:
+    #         response = db_client.get_item(TableName=channeldb,Key={"channelid":{"S":channel}})
+    #     except Exception as e:
+    #         exceptions.append("Unable to get item from DynamoDB, got exception:  %s" % (str(e).upper()))
+    #         return exceptions
+    #     return response
 
-    # Request method
-    request_method = event['httpMethod']
+    # Get list of channels from MediaTailor Channel Assembly
+    def mediatailor_get_channels():
 
-    # Body in API Call
-    request_body = event['body']
+        # initialize paginator
+        paginator = emt_client.get_paginator('list_channels')
+
+        response_iterator = paginator.paginate().build_full_result()
+
+        return response_iterator
+
+    return str(mediatailor_get_channels())
+
+    try:
+        # Path in API call
+        path = event['path']
+
+        # Request method
+        request_method = event['httpMethod']
+
+        # Body in API Call
+        request_body = event['body']
+    except Exception as e:
+        LOGGER.error("Unable to extract url path, request method, or body from request payload")
+        response_json = {"status":"Unable to extract url path, request method, or body from request payload"}
+        return api_response(500,response_json)
 
     # First deal with list uploads. This should be path = /listupload , and method of PUT
     if path == "/listupload":
@@ -51,6 +83,7 @@ def lambda_handler(event, context):
 
         # Create DB entry for channel
         # Check if channel exists, if not, create
+
 
         # Create DB entry for API request
 
