@@ -137,7 +137,6 @@ Resources:
       Description: Policy that provides ability to services to call state machines and lambdas
       Roles:
         - !Ref StepFunctionServiceRole
-      PolicyName: !Sub ${AWS::StackName}-sfn-svc-role-policy
       PolicyDocument:
         Version: 2012-10-17
         Statement:
