@@ -54,7 +54,7 @@ Resources:
     Properties:
       Roles:
         - !Ref LambdaRole
-      PolicyName: !Sub ${AWS::StackName}-s3-access
+      PolicyName: !Sub ${AWS::StackName}-lambda-access-policies
       PolicyDocument:
         Statement:
           - Effect: Allow
