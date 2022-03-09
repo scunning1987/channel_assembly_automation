@@ -176,6 +176,7 @@ Resources:
   MediaPackagePassRolePolicy:
     Type: AWS::IAM::Policy
     Properties:
+      PolicyName: !Sub "${AWS::StackName}-emp-pass-role-policy"
       Roles:
         - !Ref LambdaRole
       PolicyDocument:
