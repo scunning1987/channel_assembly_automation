@@ -163,16 +163,15 @@ Resources:
                 - events.amazonaws.com
             Action:
               - sts:AssumeRole
-
-  Policies:
-    - PolicyName: !Sub "${AWS::StackName}-${AWS::Region}-start-exec-sfn-role-policy"
-      PolicyDocument:
-        Statement:
-          - Effect: Allow
-            Action:
-              - states:StartExecution
-            Resource:
-              - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:{AWS::StackName}-CAAutomation-StepFunction
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-${AWS::Region}-start-exec-sfn-role-policy"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource:
+                  - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:{AWS::StackName}-CAAutomation-StepFunction
 
   MediaPackagePassRolePolicy:
     Type: AWS::IAM::Policy
@@ -187,28 +186,6 @@ Resources:
               - iam:PassRole
             Resource:
               - !GetAtt EMPSourceRole.Arn
-
-  MediaPackageVodAccessPolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      Roles:
-        - !Ref EmpIngestLambdaRole
-      PolicyName: !Sub "${DeploymentName}-mediapackage-vod-access-policy"
-      PolicyDocument:
-        Statement:
-          - Effect: Allow
-            Action:
-              - mediapackage-vod:CreateAsset
-              - mediapackage-vod:DeleteAsset
-              - mediapackage-vod:DescribeAsset
-              - mediapackage-vod:ListAssets
-            Resource:
-              - !Sub arn:aws:mediapackage-vod:${AWS::Region}:${AWS::AccountId}:*
-          - Effect: Allow
-            Action:
-              - mediapackage-vod:ListAssets
-            Resource:
-              - !Sub arn:aws:mediapackage-vod:${AWS::Region}:${AWS::AccountId}:assets/*
 
   APIGatewayCWatchLoggingRole:
     Type: AWS::IAM::Role
