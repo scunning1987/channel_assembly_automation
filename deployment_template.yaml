@@ -171,7 +171,7 @@ Resources:
                 Action:
                   - states:StartExecution
                 Resource:
-                  - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:{AWS::StackName}-CAAutomation-StepFunction
+                  - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-CAAutomation-StepFunction
 
   MediaPackagePassRolePolicy:
     Type: AWS::IAM::Policy
@@ -743,7 +743,7 @@ Resources:
   # Step Functions
   #################################
 
-  DashFetchSfn:
+  CAAutomationSfn:
     Type: "AWS::StepFunctions::StateMachine"
     DependsOn:
       - CAAutomationAPIHandler
@@ -1294,7 +1294,7 @@ Resources:
         }
       Targets:
         - Arn: !Sub >-
-            arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:{AWS::StackName}-CAAutomation-StepFunction
+            arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-CAAutomation-StepFunction
           RoleArn: !GetAtt StepFunctionStartExecutionRole.Arn
           Id: CAAutomationStepFunctionsInitiate
 
