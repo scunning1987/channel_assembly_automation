@@ -5,6 +5,10 @@
 
 ## Parameters - User Input
 Parameters:
+  DeploymentName:
+    Description: Label for the deployment
+    Type: String
+    Default: icaws
 
   ContentPortalAPIURL:
     Description: Enter the API URL for Content Portal
@@ -25,8 +29,8 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
       Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+        - Key: DeploymentName
+          Value: !Ref DeploymentName
 
   #################
   ## IAM & Permissions
@@ -44,9 +48,9 @@ Resources:
                 - lambda.amazonaws.com
             Action:
               - sts:AssumeRole
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
 
   ## IAM Policy
   LambdaAccessPolicy:
@@ -54,7 +58,7 @@ Resources:
     Properties:
       Roles:
         - !Ref LambdaRole
-      PolicyName: !Sub ${AWS::StackName}-lambda-access-policies
+      PolicyName: !Sub "${DeploymentName}-lambda-access-policies"
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -108,11 +112,17 @@ Resources:
               - mediatailor:*
             Resource:
               - !Sub arn:aws:mediatailor:${AWS::Region}:${AWS::AccountId}:*
+          - Effect: Allow
+            Action:
+              - events:*
+            Resource:
+              - !GetAtt StepFunctionsInitiate.Arn
+              - arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default
 
   EMPSourceBucketAccessPolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Sub ${StackName}-EMPSourceBucketAccess
+      PolicyName: !Sub "${DeploymentName}-EMPSourceBucketAccess"
       Roles:
         - Ref: EMPSourceRole
       PolicyDocument:
@@ -189,19 +199,19 @@ Resources:
             Action:
               - sts:AssumeRole
       Policies:
-        - PolicyName: !Sub "${AWS::StackName}-${AWS::Region}-start-exec-sfn-role-policy"
+        - PolicyName: !Sub "${DeploymentName}-${AWS::Region}-start-exec-sfn-role-policy"
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Action:
                   - states:StartExecution
                 Resource:
-                  - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-CAAutomation-StepFunction
+                  - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${DeploymentName}-CAAutomation-StepFunction"
 
   MediaPackagePassRolePolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Sub "${AWS::StackName}-emp-pass-role-policy"
+      PolicyName: !Sub "${DeploymentName}-emp-pass-role-policy"
       Roles:
         - !Ref LambdaRole
       PolicyDocument:
@@ -245,7 +255,7 @@ Resources:
   ContentDatabase:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub CA-Content-DB-${AWS::StackName}
+      TableName: !Sub "CA-Content-DB-${DeploymentName}"
       BillingMode: PAY_PER_REQUEST
       KeySchema:
         - AttributeName: house_id
@@ -257,7 +267,7 @@ Resources:
   APIRequestDatabase:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub CA-APIReq-DB-${AWS::StackName}
+      TableName: !Sub "CA-APIReq-DB-${DeploymentName}"
       BillingMode: PAY_PER_REQUEST
       KeySchema:
         - AttributeName: request_id
@@ -301,9 +311,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -324,8 +334,8 @@ Resources:
         S3Bucket: !Ref S3Bucket
         S3Key: !GetAtt FileMover.ca_automation_list_parser
 #      Tags:
-#        - Key: StackName
-#          Value: !Ref AWS::StackName
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
       Environment:
         Variables:
           CONTENTDB: !Ref ContentDatabase
@@ -352,9 +362,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -378,9 +388,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -403,9 +413,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -428,9 +438,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -453,9 +463,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -478,9 +488,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -503,9 +513,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -528,9 +538,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -553,9 +563,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -580,9 +590,9 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -769,9 +779,9 @@ Resources:
       Environment:
         Variables:
           BUCKET: !Ref S3Bucket
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -809,7 +819,7 @@ Resources:
       - CAAutomationSubmitPackage
       - CAAutomationListParser
     Properties:
-      StateMachineName: !Sub ${AWS::StackName}-CAAutomation-StepFunction
+      StateMachineName: !Sub "${DeploymentName}-CAAutomation-StepFunction"
       RoleArn: !GetAtt StepFunctionServiceRole.Arn
       DefinitionString: !Sub
         |-
@@ -1215,9 +1225,9 @@ Resources:
       EndpointConfiguration:
         Types:
           - REGIONAL
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
+#      Tags:
+#        - Key: DeploymentName
+#          Value: !Ref DeploymentName
 
   ProxyPlusResource:
     Type: AWS::ApiGateway::Resource
@@ -1345,7 +1355,7 @@ Resources:
         }
       Targets:
         - Arn: !Sub >-
-            arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-CAAutomation-StepFunction
+            arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${DeploymentName}-CAAutomation-StepFunction
           RoleArn: !GetAtt StepFunctionStartExecutionRole.Arn
           Id: CAAutomationStepFunctionsInitiate
 

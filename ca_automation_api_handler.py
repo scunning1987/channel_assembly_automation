@@ -287,7 +287,10 @@ def lambda_handler(event, context):
             return api_response(500,response_json)
 
         request_information_json = dict()
-        dynamo_to_json(request_information_json,request_status['Item'])
+        if "Item" in request_status:
+            dynamo_to_json(request_information_json,request_status['Item'])
+        else:
+            request_information_json["records_found"] = 0
 
         response_json = {"status":request_information_json}
         return api_response(200,response_json)
