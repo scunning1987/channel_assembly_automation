@@ -311,7 +311,7 @@ Resources:
       - FileMover
       - LambdaLayerXMLtoDict
 
-  CAAutomationListTranslator:
+  CAAutomationListParser:
     Type: AWS::Lambda::Function
     Properties:
       Description: Lambda to curate metadata received from API Handler
@@ -322,14 +322,14 @@ Resources:
       MemorySize: 10240
       Code:
         S3Bucket: !Ref S3Bucket
-        S3Key: !GetAtt FileMover.ca_automation_list_translator
+        S3Key: !GetAtt FileMover.ca_automation_list_parser
+#      Tags:
+#        - Key: StackName
+#          Value: !Ref AWS::StackName
       Environment:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-      Tags:
-        - Key: StackName
-          Value: !Ref AWS::StackName
     DependsOn:
       - S3Bucket
       - LambdaRole
@@ -807,7 +807,7 @@ Resources:
       - CAAutomationStatusCheck
       - CAAutomationSubmitTranscode
       - CAAutomationSubmitPackage
-      - CAAutomationListTranslator
+      - CAAutomationListParser
     Properties:
       StateMachineName: !Sub ${AWS::StackName}-CAAutomation-StepFunction
       RoleArn: !GetAtt StepFunctionServiceRole.Arn
@@ -824,7 +824,7 @@ Resources:
               "OutputPath": "$.Payload",
               "Parameters": {
                 "Payload.$": "$",
-                "FunctionName": "${CAAutomationListTranslator.Arn}"
+                "FunctionName": "${CAAutomationListParser.Arn}"
               },
               "Retry": [
                 {
