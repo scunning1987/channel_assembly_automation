@@ -42,8 +42,6 @@ def lambda_handler(event, context):
             }
         }
 
-        ##
-
         # DYNAMO DB JSON BUILDER
         dynamodb_item = dict()
         keylist = []
@@ -70,13 +68,23 @@ def lambda_handler(event, context):
 
         dict_path(dynamodb_item,db_item)
 
-        ##
-
-
         try:
             response = db_client.put_item(TableName=api_request_database,Item=dynamodb_item)
         except Exception as e:
             exceptions.append("Unable to create/update item in DynamoDB, got exception:  %s" % (str(e).upper()))
+            return exceptions
+        return response
+
+
+    # DynamoDB Get Item // record of list translation
+    def get_api_req_record(request_uuid):
+
+        api_request_database = os.environ['APIREQDB']
+
+        try:
+            response = db_client.get_item(TableName=api_request_database,Key={"request_id":{"S":request_uuid}})
+        except Exception as e:
+            exceptions.append("Unable to get item from database, got exception:  %s" % (str(e).upper()))
             return exceptions
         return response
 
@@ -145,7 +153,9 @@ def lambda_handler(event, context):
         except Exception as e:
             LOGGER.error("Unable to get channel list from MediaTailor: %s " % (e))
             exceptions.append("Unable to get channel list from MediaTailor: %s " % (e))
+
     ## Functions End
+
 
     try:
         # Path in API call
@@ -233,12 +243,16 @@ def lambda_handler(event, context):
         request_uuid = path.split("/")[-1]
 
         # lookup request_id in API Req DB
+        request_status = get_api_req_record(request_uuid)
+
+        if len(exceptions) > 0:
+            response_json = {"status":"Unable to get status update from database","exceptions":exceptions}
+            return api_response(500,response_json)
 
         # manipulate response and return to sender
+        # placeholder ## do this later
 
-        ## As always, catch if there is an issue...
-
-        response_json = {"status":"nice to see you. %s " % (request_uuid)}
+        response_json = {"status":request_status}
         return api_response(200,response_json)
 
     elif path == "/channels":
