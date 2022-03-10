@@ -23,15 +23,73 @@ def lambda_handler(event, context):
 
     ## Functions Start
 
+    # DYNAMO DB JSON BUILDER
+    def json_to_dynamo(dicttopopulate,my_dict):
+        for k,v in my_dict.items():
+
+            if isinstance(v,dict):
+                dynamodb_item_subdict = dict()
+                json_to_dynamo(dynamodb_item_subdict,v)
+
+                v = dynamodb_item_subdict
+                dicttopopulate.update({k:{"M":v}})
+
+            elif isinstance(v,str):
+                dicttopopulate.update({k:{"S":v}})
+            elif isinstance(v,list):
+                for i in range(0,len(v)):
+                    dynamodb_item_list = dict()
+                    json_to_dynamo(dynamodb_item_list,v[i])
+
+                    v[i] = {"M":dynamodb_item_list}
+
+                dicttopopulate.update({k:{"L":v}})
+
+    def dynamo_to_json(dicttopopulate,my_dict):
+        for k,v in my_dict.items():
+
+            value_type = list(my_dict[k].keys())[0]
+
+            if value_type == "M":
+                value = my_dict[k][value_type]
+
+                for i in range(0,len(value)):
+                    dynamodb_item_m = dict()
+                    dynamo_to_json(dynamodb_item_m,value)
+                    v = dynamodb_item_m
+
+                value.update(dynamodb_item_m)
+                dicttopopulate.update({k:value})
+
+            elif value_type == "S":
+                value = my_dict[k][value_type]
+                dicttopopulate.update({k:value})
+
+            elif value_type == "L": # list
+                value = my_dict[k][value_type]
+
+                for i in range(0,len(value)):
+                    dynamodb_item_list = dict()
+                    dynamo_to_json(dynamodb_item_list,value[i])
+
+                    value[i] = dynamodb_item_list
+
+                dicttopopulate.update({k:value})
+            elif k == "M":
+
+                dynamodb_item_m = dict()
+                dynamo_to_json(dynamodb_item_m,v)
+                v = dynamodb_item_m
+                dicttopopulate.update(v)
+
     # DynamoDB Put Item // Create record of list translation
-    def create_api_req_record(request_uuid,request_body_b64,channel_name):
+    def create_api_req_record(request_uuid,channel_name):
         # fields for Db record: request_id (primary key), list_translation, channel_creation, channel_programs, vod_sources, clip_transcodes, clip_packaging, list (b64 encoded)
 
         api_request_database = os.environ['APIREQDB']
 
         db_item = {
             "request_id": request_uuid,
-            "list_b64":request_body_b64,
             "channel_name":channel_name,
             "status":{
                 "channel_creation":"not_started",
@@ -42,31 +100,10 @@ def lambda_handler(event, context):
             }
         }
 
-        # DYNAMO DB JSON BUILDER
+
+        # Send to Dynamo DB JSON builder
         dynamodb_item = dict()
-        keylist = []
-        def dict_path(dicttopopulate,my_dict):
-            for k,v in my_dict.items():
-
-                if isinstance(v,dict):
-                    dynamodb_item_subdict = dict()
-                    dict_path(dynamodb_item_subdict,v)
-
-                    v = dynamodb_item_subdict
-                    dicttopopulate.update({k:{"M":v}})
-
-                elif isinstance(v,str):
-                    dicttopopulate.update({k:{"S":v}})
-                elif isinstance(v,list):
-                    for i in range(0,len(v)):
-                        dynamodb_item_list = dict()
-                        dict_path(dynamodb_item_list,v[i])
-
-                        v[i] = {"M":dynamodb_item_list}
-
-                    dicttopopulate.update({k:{"L":v}})
-
-        dict_path(dynamodb_item,db_item)
+        json_to_dynamo(dynamodb_item,db_item)
 
         try:
             response = db_client.put_item(TableName=api_request_database,Item=dynamodb_item)
@@ -166,7 +203,7 @@ def lambda_handler(event, context):
 
     except Exception as e:
         LOGGER.error("Unable to extract url path, request method, or body from request payload")
-        response_json = {"status":"Unable to extract url path, request method, or body from request payload"}
+        response_json = {"status":"Unable to extract url path, request method, or body from request payload -a: %s " % (e)}
         return api_response(500,response_json)
 
     # First deal with list uploads. This should be path = /listupload , and method of PUT
@@ -181,7 +218,7 @@ def lambda_handler(event, context):
             request_body_b64 = base64.b64encode(event['body'].encode("utf-8"))
         except Exception as e:
             LOGGER.error("Unable to extract body from request payload")
-            response_json = {"status":"Unable to extract url path, request method, or body from request payload"}
+            response_json = {"status":"Unable to extract body from request payload: %s " % (e)}
             return api_response(500,response_json)
 
         LOGGER.info("request body is of type: %s " % (type(request_body)))
@@ -209,7 +246,7 @@ def lambda_handler(event, context):
 
         # Create DB entry for API request
         request_uuid = uuid.uuid4().hex
-        create_api_req_record(request_uuid,request_body_b64, channel_name)
+        create_api_req_record(request_uuid, channel_name)
 
         if len(exceptions) > 0:
             response_json = {"status":"Unable to process, try again later","exceptions":exceptions}
@@ -249,10 +286,10 @@ def lambda_handler(event, context):
             response_json = {"status":"Unable to get status update from database","exceptions":exceptions}
             return api_response(500,response_json)
 
-        # manipulate response and return to sender
-        # placeholder ## do this later
+        request_information_json = dict()
+        dynamo_to_json(request_information_json,request_status['Item'])
 
-        response_json = {"status":request_status}
+        response_json = {"status":request_information_json}
         return api_response(200,response_json)
 
     elif path == "/channels":
