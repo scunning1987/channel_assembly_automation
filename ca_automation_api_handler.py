@@ -136,9 +136,9 @@ def lambda_handler(event, context):
     def initialize_step_functions(request_uuid):
         event_detail = {
             "request":request_uuid,
-            "list":json.loads(event['body']),
             "clips":{},
-            "workflow_status":{}
+            "workflow_status":{},
+            "list":json.loads(event['body'])
         }
 
         try:
