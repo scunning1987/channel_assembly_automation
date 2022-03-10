@@ -109,6 +109,25 @@ Resources:
             Resource:
               - !Sub arn:aws:mediatailor:${AWS::Region}:${AWS::AccountId}:*
 
+  EMPSourceBucketAccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${StackName}-EMPSourceBucketAccess
+      Roles:
+        - Ref: EMPSourceRole
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:GetBucketRequestPayment
+            Resource:
+              - !Sub arn:aws:s3:::${S3Bucket}
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub arn:aws:s3:::${S3Bucket}/*
 
   EMPSourceRole:
     Type: AWS::IAM::Role
@@ -966,7 +985,7 @@ Resources:
                             "Choices": [
                               {
                                 "Not": {
-                                  "Variable": "$.DBCheck",
+                                  "Variable": "$.workflow_state.db_check",
                                   "StringMatches": "Exists"
                                 },
                                 "Next": "Transcode Submit"
