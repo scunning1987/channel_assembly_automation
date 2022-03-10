@@ -7,6 +7,7 @@ https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_create_programs.py
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_create_sources.py
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_list_translator.py
+https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_list_parser.py
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_start_channel.py
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_status_check.py
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_submit_package.py
