@@ -31,7 +31,7 @@ def lambda_handler(event, context):
 
         db_item = {
             "request_id": request_uuid,
-            "list_b64":"placeholder",
+            "list_b64":request_body_b64,
             "channel_name":channel_name,
             "status":{
                 "channel_creation":"not_started",
@@ -42,8 +42,39 @@ def lambda_handler(event, context):
             }
         }
 
+        ##
+
+        # DYNAMO DB JSON BUILDER
+        dynamodb_item = dict()
+        keylist = []
+        def dict_path(dicttopopulate,my_dict):
+            for k,v in my_dict.items():
+
+                if isinstance(v,dict):
+                    dynamodb_item_subdict = dict()
+                    dict_path(dynamodb_item_subdict,v)
+
+                    v = dynamodb_item_subdict
+                    dicttopopulate.update({k:{"M":v}})
+
+                elif isinstance(v,str):
+                    dicttopopulate.update({k:{"S":v}})
+                elif isinstance(v,list):
+                    for i in range(0,len(v)):
+                        dynamodb_item_list = dict()
+                        dict_path(dynamodb_item_list,v[i])
+
+                        v[i] = {"M":dynamodb_item_list}
+
+                    dicttopopulate.update({k:{"L":v}})
+
+        dict_path(dynamodb_item,db_item)
+
+        ##
+
+
         try:
-            response = db_client.put_item(TableName=api_request_database,Item=db_item)
+            response = db_client.put_item(TableName=api_request_database,Item=dynamodb_item)
         except Exception as e:
             exceptions.append("Unable to create/update item in DynamoDB, got exception:  %s" % (str(e).upper()))
             return exceptions
@@ -97,22 +128,24 @@ def lambda_handler(event, context):
         # initialize paginator
         paginator = emt_client.get_paginator('list_channels')
 
-        response_iterator = paginator.paginate().build_full_result()
-        response_json = json.loads(json.dumps(response_iterator, default = lambda o: f"<<non-serializable: {type(o).__qualname__}>>"))
+        try:
+            response_iterator = paginator.paginate().build_full_result()
+            response_json = json.loads(json.dumps(response_iterator, default = lambda o: f"<<non-serializable: {type(o).__qualname__}>>"))
 
-        pretty_channel_json = dict()
+            pretty_channel_json = dict()
 
-        if len(response_json['Items']) > 0:
-            for channel_item in response_json['Items']:
-                channel_name = channel_item['ChannelName']
-                channel_state = channel_item['ChannelState']
-                channel_outputs = channel_item['Outputs']
-                pretty_channel_json[channel_name] = {"channel_state":channel_state,"outputs":channel_outputs}
+            if len(response_json['Items']) > 0:
+                for channel_item in response_json['Items']:
+                    channel_name = channel_item['ChannelName']
+                    channel_state = channel_item['ChannelState']
+                    channel_outputs = channel_item['Outputs']
+                    pretty_channel_json[channel_name] = {"channel_state":channel_state,"outputs":channel_outputs}
 
-        return pretty_channel_json
-
+            return pretty_channel_json
+        except Exception as e:
+            LOGGER.error("Unable to get channel list from MediaTailor: %s " % (e))
+            exceptions.append("Unable to get channel list from MediaTailor: %s " % (e))
     ## Functions End
-
 
     try:
         # Path in API call
@@ -120,11 +153,6 @@ def lambda_handler(event, context):
 
         # Request method
         request_method = event['httpMethod']
-
-        # Body in API Call
-        request_body = json.loads(event['body'])
-
-        request_body_b64 = base64.b64encode(event['body'].encode("utf-8"))
 
     except Exception as e:
         LOGGER.error("Unable to extract url path, request method, or body from request payload")
@@ -135,6 +163,15 @@ def lambda_handler(event, context):
     if path == "/listupload":
         if str(request_method) != "PUT":
             response_json = {"status":"For this API resource, we expect HTTP PUT with json payload of the playlist, %s" % (request_method)}
+            return api_response(500,response_json)
+
+        try:
+            # Body in API Call
+            request_body = json.loads(event['body'])
+            request_body_b64 = base64.b64encode(event['body'].encode("utf-8"))
+        except Exception as e:
+            LOGGER.error("Unable to extract body from request payload")
+            response_json = {"status":"Unable to extract url path, request method, or body from request payload"}
             return api_response(500,response_json)
 
         LOGGER.info("request body is of type: %s " % (type(request_body)))
@@ -181,7 +218,7 @@ def lambda_handler(event, context):
             return api_response(500,response_json)
 
         current_time = datetime.datetime.utcnow().isoformat() + 'Z'
-        url_for_updates = "https://%s/%s/liststatus/request_uuid" % (event['requestContext']['domainName'],event['requestContext']['stage'])
+        url_for_updates = "https://%s/%s/liststatus/%s" % (event['requestContext']['domainName'],event['requestContext']['stage'],request_uuid)
 
         response_json = {
             "Playout Channel Name": channel_name,
@@ -191,5 +228,29 @@ def lambda_handler(event, context):
         }
         return api_response(200,response_json)
 
-    response_json = {"status":"For this API resource, we expect a json payload"}
-    return api_response(500,response_json)
+    elif "/liststatus" in path:
+
+        request_uuid = path.split("/")[-1]
+
+        # lookup request_id in API Req DB
+
+        # manipulate response and return to sender
+
+        ## As always, catch if there is an issue...
+
+        response_json = {"status":"nice to see you. %s " % (request_uuid)}
+        return api_response(200,response_json)
+
+    elif path == "/channels":
+
+        channel_list = mediatailor_get_channels()
+
+        if len(exceptions) > 0:
+            response_json = {"status":"Unable to get channel list from MediaTailor","exceptions":exceptions}
+            return api_response(500,response_json)
+
+        return api_response(200,channel_list)
+
+    else:
+        response_json = {"status":"You are here because your URL is malformed or incorrect. Please refer to the CloudFormation Stack Outputs to determine correct API call syntax"}
+        return api_response(500,response_json)
