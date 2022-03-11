@@ -30,6 +30,8 @@ def lambda_handler(event, context):
     program_schedule = []
     #media_prep = []
     media_prep = dict() # primary keys as houseId
+    ad_prep = dict() # Ad content that needs to be stitched by MediaConvert
+    list_for_step_functions_map = []
 
     for scheduled_event in versio_list_json['ScheduledEvents']:
 
@@ -41,19 +43,114 @@ def lambda_handler(event, context):
             house_id = scheduled_event['PrimaryContent']['HouseId']
             total_segments = scheduled_event['PrimaryContent']['TotalSegments'] # int
             s3_uri = "s3://%s" % (scheduled_event['PrimaryContent']['Filename'].replace("\\","/"))
+            segment_number = scheduled_event['PrimaryContent']['SegmentNumber']
 
             if house_id not in media_prep.keys():
                 media_prep[house_id] = {}
 
             if "segments" not in media_prep[house_id].keys():
-                media_prep[house_id]['segments'] = []
+                media_prep[house_id]['segments'] = {}
+
+            eom_timecode = scheduled_event['PrimaryContent']['Duration']
+            som_timecode = scheduled_event['PrimaryContent']['SOM']
+
+            # start timecode to ms
+            h, m, sms = som_timecode.split(':')
+            s = sms.split(frame_separator)[0]
+            frames = sms.split(frame_separator)[1][0:2]
+            ms = round(int(frames) / frame_rate,3) * 1000
+
+            som_seconds = int(h) * 3600 + int(m) * 60 + int(s)
+            som_milliseconds = som_seconds * 1000 + int(ms)
+
+            # end timecode to ms
+            h, m, sms = eom_timecode.split(':')
+            s = sms.split(frame_separator)[0]
+            frames = sms.split(frame_separator)[1][0:2]
+            ms = round(int(frames) / frame_rate,3) * 1000
+
+            eom_seconds = int(h) * 3600 + int(m) * 60 + int(s)
+            eom_milliseconds = eom_seconds * 1000 + int(ms)
+
+            if scheduled_event['EndMode'] == "Duration":
+                eom_milliseconds = "end"
+
+
+            media_prep[house_id]['segments'][segment_number] = {"start_ms":som_milliseconds,"end_ms":eom_milliseconds}
+
+
 
             media_prep[house_id]['total_segments'] = total_segments
             media_prep[house_id]['s3'] = s3_uri
+            media_prep[house_id]['framerate'] = frame_rate
+
+    for container_uuid in list(versio_list_json['Containers'].keys()):
+        container = versio_list_json['Containers'][container_uuid]
+
+        if container['ContainerType'] == "Commercial" and container['CType'] == "BreakPod":
+
+            container_name = container['Name']
+            schedule_uuid_list = container['Children']
+            break_pod_list = []
+
+            for scheduled_event in versio_list_json['ScheduledEvents']:
+
+                content_type = scheduled_event['PrimaryContent']['ContentType']
+                uid = scheduled_event['UId']
+
+                if uid in schedule_uuid_list and content_type == "Video":
+                    # house id and filename
+                    house_id = scheduled_event['PrimaryContent']['HouseId']
+                    s3_uri = "s3://%s" % (scheduled_event['PrimaryContent']['Filename'].replace("\\","/"))
+
+                    eom_timecode = scheduled_event['PrimaryContent']['Duration']
+                    som_timecode = scheduled_event['PrimaryContent']['SOM']
+
+                    # start timecode to ms
+                    h, m, sms = som_timecode.split(':')
+                    s = sms.split(frame_separator)[0]
+                    frames = sms.split(frame_separator)[1][0:2]
+                    ms = round(int(frames) / frame_rate,3) * 1000
+
+                    som_seconds = int(h) * 3600 + int(m) * 60 + int(s)
+                    som_milliseconds = som_seconds * 1000 + int(ms)
+
+                    # end timecode to ms
+                    h, m, sms = eom_timecode.split(':')
+                    s = sms.split(frame_separator)[0]
+                    frames = sms.split(frame_separator)[1][0:2]
+                    ms = round(int(frames) / frame_rate,3) * 1000
+
+                    eom_seconds = int(h) * 3600 + int(m) * 60 + int(s)
+                    eom_milliseconds = eom_seconds * 1000 + int(ms)
+
+                    if scheduled_event['EndMode'] == "Duration":
+                        eom_milliseconds = "end"
+
+                    break_pod_list.append({"house_id":house_id,"s3":s3_uri,"start_ms":som_milliseconds,"end_ms":eom_milliseconds})
+
+            ad_prep[container_name] = break_pod_list
+
+    event['detail']['clips']['program_content'] = media_prep
+    event['detail']['clips']['ad_content'] = ad_prep
 
 
-    return media_prep
+    for media_key in media_prep:
+        media_dict = dict()
+        media_dict = media_prep[media_key]
+        media_dict['house_id'] = media_key
+        list_for_step_functions_map.append(media_dict)
 
+    for ad_key in ad_prep:
+        ad_dict = dict()
+        #ad_dict[ad_key] = ad_prep[ad_key]
+        ad_dict['break_pod_name'] = ad_key
+        ad_dict['pod'] = ad_prep[ad_key]
+        list_for_step_functions_map.append(ad_dict)
+
+    event['detail']['clips']['video_workflow'] = list_for_step_functions_map
+
+    return event['detail']
 
     '''    
         house_id = scheduled_event['PrimaryContent']['HouseId'].replace(" ","_").lower()
