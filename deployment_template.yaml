@@ -106,7 +106,6 @@ Resources:
               - iam:GetRole
               - iam:PassRole
             Resource:
-              - !GetAtt EMPSourceRole.Arn
               - !GetAtt EMCSourceRole.Arn
           - Effect: Allow
             Action:
