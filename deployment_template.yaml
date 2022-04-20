@@ -107,6 +107,7 @@ Resources:
               - iam:PassRole
             Resource:
               - !GetAtt EMPSourceRole.Arn
+              - !GetAtt EMCSourceRole.Arn
           - Effect: Allow
             Action:
               - mediatailor:*
@@ -139,6 +140,25 @@ Resources:
             Resource:
               - !Sub arn:aws:s3:::${S3Bucket}/*
 
+  EMCSourceBucketAccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${DeploymentName}-EMCSourceBucketAccess"
+      Roles:
+        - Ref: EMCSourceRole
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:*
+            Resource:
+              - !Sub arn:aws:s3:::${S3Bucket}
+          - Effect: Allow
+            Action:
+              - s3:*
+            Resource:
+              - !Sub arn:aws:s3:::${S3Bucket}/*
+
   EMPSourceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -149,6 +169,21 @@ Resources:
             Principal:
               Service:
                 - mediapackage.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+    DependsOn: S3Bucket
+
+  EMCSourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - mediaconvert.amazonaws.com
             Action:
               - sts:AssumeRole
 
@@ -463,6 +498,7 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
+          CDN_DOMAIN_NAME: dd
 #      Tags:
 #        - Key: DeploymentName
 #          Value: !Ref DeploymentName
@@ -590,6 +626,8 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
+          EMCROLE: !GetAtt EMCSourceRole.Arn
+          S3BUCKET: !Ref S3Bucket
 #      Tags:
 #        - Key: DeploymentName
 #          Value: !Ref DeploymentName
@@ -657,7 +695,7 @@ Resources:
               ## Log the incoming event
               LOGGER.info("Event : %s " % (event))
 
-              ## Create Response Data Dictionary for the CloudFormationn response
+              ## Create Response Data Dictionary for the CloudFormation response
               responseData = dict()
 
               ## Initialize S3 boto3 client
@@ -816,7 +854,6 @@ Resources:
       - CAAutomationStartChannel
       - CAAutomationStatusCheck
       - CAAutomationSubmitTranscode
-      - CAAutomationSubmitPackage
       - CAAutomationListParser
     Properties:
       StateMachineName: !Sub "${DeploymentName}-CAAutomation-StepFunction"
@@ -862,7 +899,7 @@ Resources:
                       "OutputPath": "$.Payload",
                       "Parameters": {
                         "Payload.$": "$",
-                        "FunctionName": "${CAAutomationAPIHandler.Arn}"
+                        "FunctionName": "${CAAutomationListTranslator.Arn}"
                       },
                       "Retry": [
                         {
@@ -884,7 +921,7 @@ Resources:
                       "OutputPath": "$.Payload",
                       "Parameters": {
                         "Payload.$": "$",
-                        "FunctionName": "${CAAutomationListTranslator.Arn}"
+                        "FunctionName": "${CAAutomationCreateChannel.Arn}"
                       },
                       "Retry": [
                         {
@@ -1086,72 +1123,10 @@ Resources:
                                   "Variable": "$.workflow_state.transcode_complete",
                                   "BooleanEquals": true
                                 },
-                                "Next": "JITP Submit"
-                              }
-                            ],
-                            "Default": "Wait for Transcode"
-                          },
-                          "JITP Submit": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "OutputPath": "$.Payload",
-                            "Parameters": {
-                              "Payload.$": "$",
-                              "FunctionName": "${CAAutomationSubmitPackage.Arn}"
-                            },
-                            "Retry": [
-                              {
-                                "ErrorEquals": [
-                                  "Lambda.ServiceException",
-                                  "Lambda.AWSLambdaException",
-                                  "Lambda.SdkClientException"
-                                ],
-                                "IntervalSeconds": 2,
-                                "MaxAttempts": 6,
-                                "BackoffRate": 2
-                              }
-                            ],
-                            "Next": "Wait for Package"
-                          },
-                          "Wait for Package": {
-                            "Type": "Wait",
-                            "Seconds": 120,
-                            "Next": "Package Status Check"
-                          },
-                          "Package Status Check": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "OutputPath": "$.Payload",
-                            "Parameters": {
-                              "Payload.$": "$",
-                              "FunctionName": "${CAAutomationStatusCheck.Arn}"
-                            },
-                            "Retry": [
-                              {
-                                "ErrorEquals": [
-                                  "Lambda.ServiceException",
-                                  "Lambda.AWSLambdaException",
-                                  "Lambda.SdkClientException"
-                                ],
-                                "IntervalSeconds": 2,
-                                "MaxAttempts": 6,
-                                "BackoffRate": 2
-                              }
-                            ],
-                            "Next": "Package Complete Check"
-                          },
-                          "Package Complete Check": {
-                            "Type": "Choice",
-                            "Choices": [
-                              {
-                                "Not": {
-                                  "Variable": "$.workflow_state.package_complete",
-                                  "BooleanEquals": true
-                                },
                                 "Next": "Create SA Sources"
                               }
                             ],
-                            "Default": "Wait for Package"
+                            "Default": "Wait for Transcode"
                           },
                           "Create SA Sources": {
                             "Type": "Task",
@@ -1199,7 +1174,8 @@ Resources:
                           }
                         }
                       },
-                      "End": true
+                      "End": true,
+                      "ItemsPath": "$.clips.video_workflow"
                     }
                   }
                 }
