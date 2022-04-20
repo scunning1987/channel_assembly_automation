@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
-cdn_base_url = os.environ['CDN_DOMAIN_NAME']
+cdn_base_url = 'https://' + os.environ['CDN_DOMAIN_NAME']
 
 def lambda_handler(event, context):
     LOGGER.info(event)

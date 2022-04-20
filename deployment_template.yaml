@@ -498,7 +498,7 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
-          CDN_DOMAIN_NAME: dd
+          CDN_DOMAIN_NAME: !GetAtt CloudFrontDistribution.DomainName
 #      Tags:
 #        - Key: DeploymentName
 #          Value: !Ref DeploymentName
@@ -1334,6 +1334,46 @@ Resources:
             arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${DeploymentName}-CAAutomation-StepFunction
           RoleArn: !GetAtt StepFunctionStartExecutionRole.Arn
           Id: CAAutomationStepFunctionsInitiate
+
+    #################
+    ## CloudFront
+    #################
+
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub CloudFront OAI for Bucket ${S3Bucket}
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub Distribution for stack ${AWS::StackName}
+        Enabled: True
+        HttpVersion: http2
+        Origins:
+          - DomainName: !Sub ${S3Bucket}.s3.${AWS::Region}.amazonaws.com
+            Id: !Ref S3Bucket
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOAI}
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          TargetOriginId: !Ref S3Bucket
+          ViewerProtocolPolicy: redirect-to-https
+          DefaultTTL: 2
+          MinTTL: 2
+          MaxTTL: 2
+          ForwardedValues:
+            QueryString: True
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+    DependsOn:
+      - CloudFrontOAI
+
 
 #################################
 # Outputs
