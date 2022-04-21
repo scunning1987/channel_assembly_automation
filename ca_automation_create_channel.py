@@ -614,7 +614,7 @@ def lambda_handler(event, context):
 
         source_create_response_json = emc_response_json = json.loads(json.dumps(source_create_response, default = lambda o: f"<<non-serializable: {type(o).__qualname__}>>"))
 
-        if len(exceptions) > 0:
+        if len(exceptions) > 1:
             raise Exception(exceptions)
 
         LOGGER.info("Created VOD Source")
@@ -625,7 +625,7 @@ def lambda_handler(event, context):
 
         LOGGER.info("Vod Source already exists, nothing to do")
 
-        event['workflow_state']['mediatailor_source'] = "already exists"
+        event['workflow_state'] = {"mediatailor_source": "already exists"}
 
 
     #
