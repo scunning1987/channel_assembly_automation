@@ -129,7 +129,7 @@ def lambda_handler(event, context):
         return response
 
 
-    event['workflow_state'] = {"allcomplete":True}
+    event['workflow_state'] = {"all_complete":True}
 
     # Check Status
 

@@ -116,8 +116,12 @@ Resources:
             Action:
               - events:*
             Resource:
-              - !GetAtt StepFunctionsInitiate.Arn
-              - arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/default
+              - '*'
+          - Effect: Allow
+            Action:
+              - mediaconvert:*
+            Resource:
+              - '*'
 
   EMPSourceBucketAccessPolicy:
     Type: AWS::IAM::Policy
