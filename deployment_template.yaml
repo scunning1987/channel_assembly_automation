@@ -973,7 +973,7 @@ Resources:
                     },
                     "Wait for Video Pipeline": {
                       "Type": "Wait",
-                      "Seconds": 120,
+                      "Seconds": 45,
                       "Next": "Video Pipeline Check"
                     },
                     "Video Pipeline Check": {
@@ -1124,7 +1124,7 @@ Resources:
                           },
                           "Wait for Transcode": {
                             "Type": "Wait",
-                            "Seconds": 120,
+                            "Seconds": 45,
                             "Next": "Transcode Status Check"
                           },
                           "Transcode Status Check": {
