@@ -10,10 +10,11 @@ import math
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
-CDN
-BLACK_SLATE URI
-EMCROLE
-S3BUCKET
+
+cdn_base_url = 'https://' + os.environ['CDN_DOMAIN_NAME']
+slate_mp4 = os.environ['SLATE_URI']
+emc_role_arn = os.environ['EMCROLE']
+s3bucket = os.environ['S3BUCKET']
 
 def lambda_handler(event, context):
     LOGGER.info(event)
@@ -196,6 +197,12 @@ def lambda_handler(event, context):
 
     # Check if channel exists
     # DO LATER
+
+    # 1. Create Source Location
+    # 2. Create Slate source
+    # 3. Create channel
+    # 4. update API req DB
+
 
     channel_name = event['list']['PlayoutChannel']
     # Create channel
