@@ -10,6 +10,11 @@ import math
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
+CDN
+BLACK_SLATE URI
+EMCROLE
+S3BUCKET
+
 def lambda_handler(event, context):
     LOGGER.info(event)
 

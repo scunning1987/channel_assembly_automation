@@ -453,6 +453,10 @@ Resources:
         Variables:
           CONTENTDB: !Ref ContentDatabase
           APIREQDB: !Ref APIRequestDatabase
+          SLATE_URI: !GetAtt FileMover.BLACK_LOOP
+          EMCROLE: !GetAtt EMCSourceRole.Arn
+          S3BUCKET: !Ref S3Bucket
+
 #      Tags:
 #        - Key: DeploymentName
 #          Value: !Ref DeploymentName
