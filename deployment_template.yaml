@@ -289,6 +289,30 @@ Resources:
     DependsOn:
       - CAAutomationAPIHandler
 
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument: !Sub
+        |-
+        {
+            "Version": "2012-10-17",
+            "Id": "PolicyForCloudFrontPrivateContent",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "AWS": "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOAI}"
+                    },
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::${S3Bucket}/*"
+                }
+            ]
+        }
+    DependsOn:
+      - S3Bucket
+      - CloudFrontOAI
+
   #####
   # DynamoDB
   #####
@@ -456,6 +480,7 @@ Resources:
           SLATE_URI: !GetAtt FileMover.BLACK_LOOP
           EMCROLE: !GetAtt EMCSourceRole.Arn
           S3BUCKET: !Ref S3Bucket
+          CDN_DOMAIN_NAME: !GetAtt CloudFrontDistribution.DomainName
 
 #      Tags:
 #        - Key: DeploymentName
