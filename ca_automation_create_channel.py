@@ -615,7 +615,7 @@ def lambda_handler(event, context):
         source_create_response_json = emc_response_json = json.loads(json.dumps(source_create_response, default = lambda o: f"<<non-serializable: {type(o).__qualname__}>>"))
 
         if len(exceptions) > 1:
-            raise Exception(exceptions)
+            raise Exception(exceptions)s
 
         LOGGER.info("Created VOD Source")
 

@@ -146,7 +146,7 @@ def lambda_handler(event, context):
 
             total_runtime_ms += segment_runtime
 
-        house_id = "%s_%s" % (original_house_id,total_runtime_ms)
+        house_id = "%s_%s" % (original_house_id,int(total_runtime_ms))
         LOGGER.info("Total clip runtime is %s, new house id is : %s " % (total_runtime_ms,house_id))
 
     else: # This is NonProgramEvent
@@ -164,7 +164,7 @@ def lambda_handler(event, context):
 
                 total_runtime_ms += segment_runtime
 
-        house_id = "%s_%s" % (original_house_id,total_runtime_ms)
+        house_id = "%s_%s" % (original_house_id,int(total_runtime_ms))
         LOGGER.info("Total clip runtime is %s, new house id is : %s " % (total_runtime_ms,house_id))
 
     # See if this item exists in the database
