@@ -13,3 +13,4 @@ https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_submit_package.py
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/ca_automation_submit_transcode.py
 https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/deployment_template.yaml
+https://raw.githubusercontent.com/scunning1987/channel_assembly_automation/main/BLACK_LOOP.mp4
