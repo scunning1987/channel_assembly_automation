@@ -615,7 +615,7 @@ def lambda_handler(event, context):
         source_create_response_json = emc_response_json = json.loads(json.dumps(source_create_response, default = lambda o: f"<<non-serializable: {type(o).__qualname__}>>"))
 
         if len(exceptions) > 1:
-            raise Exception(exceptions)s
+            raise Exception(exceptions)
 
         LOGGER.info("Created VOD Source")
 
@@ -632,7 +632,7 @@ def lambda_handler(event, context):
     # CREATE SOURCE END
     #
 
-    channel_name = event['list']['PlayoutChannel']
+    channel_name = event['input']['list']['PlayoutChannel']
     # Create channel
 
     create_ca_channel(channel_name,cdn_name,vod_source_name)
@@ -643,7 +643,7 @@ def lambda_handler(event, context):
     # Dont do this here, do it at the end of program creation
 
     # GET API REQ Status
-    request_id = event['request']
+    request_id = event['input']['request']
 
     # UPDATE API Req status with channel create
 
