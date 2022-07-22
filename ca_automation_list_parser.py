@@ -2,12 +2,57 @@ import json
 import logging
 import datetime
 import dateutil.parser as dp
+import os
+import boto3
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
+s3bucket = os.environ['S3BUCKET']
+
 def lambda_handler(event, context):
     LOGGER.info(event)
+
+    # to track exceptions
+    exceptions = []
+    exceptions.clear()
+
+
+    def get_req_data(bucket,key):
+        LOGGER.info("Attempting to get request data json from S3: %s " % (key))
+
+        # s3 boto3 client initialize
+        s3_client = boto3.client('s3')
+
+        try:
+            s3_raw_response = s3_client.get_object(Bucket=bucket,Key=key)
+        except Exception as e:
+            msg = "Unable to get template %s from S3, got exception : %s" % (key,e)
+            LOGGER.error(msg)
+            exceptions.append(msg)
+            return msg
+
+        return json.loads(s3_raw_response['Body'].read())
+
+    def put_req_data(bucket,key,s3_data):
+        LOGGER.info("Attempting to update request data json with new data")
+        content_type = "application/json"
+
+        # s3 boto3 client initialize
+        s3_client = boto3.client('s3')
+
+        try:
+            s3_response = s3_client.put_object(Body=json.dumps(s3_data), Bucket=bucket, Key=key,ContentType=content_type, CacheControl='no-cache')
+            LOGGER.info("Put object to S3")
+            event['status'] = "Channel map updated successfully"
+        except Exception as e:
+            msg = "Unable to update channel map json, got exception : %s " % (e)
+            LOGGER.error(msg)
+            event['status'] = msg
+            exceptions.append(msg)
+
+
+
 
     def hms_to_s(input_hms):
         h, m, sms = input_hms.split(':')
@@ -23,6 +68,16 @@ def lambda_handler(event, context):
     # return event['detail']['request'] # request uuid
     # return event['detail']['clips'] # empty
     # return event['detail']['workflow_status']
+
+
+    # Get request payload from S3 and put into event key
+    s3bucket = event['detail']['list_location'].split("/")[2]
+    s3key = '/'.join(event['detail']['list_location'].split("/")[3:])
+    request_list = json.loads(get_req_data(s3bucket,s3key))
+    if len(exceptions) > 0:
+        raise Exception(exceptions)
+    event['detail']['list'] = request_list
+
 
     versio_list_json = event['detail']['list']
 
@@ -216,6 +271,7 @@ def lambda_handler(event, context):
     event['detail']['clips']['ad_breaks'] = adbreaks
 
     # iterate
+    unique_event_list = []
     for media_key in media_prep:
 
         if media_prep[media_key]['type'] == "ProgramEvent":
@@ -223,7 +279,10 @@ def lambda_handler(event, context):
             media_dict = media_prep[media_key]
             media_dict['house_id'] = media_key
 
-            list_for_step_functions_map.append(media_dict)
+            if media_dict['house_id'] not in unique_event_list:
+
+                list_for_step_functions_map.append(media_dict)
+                unique_event_list.append(media_dict['house_id'])
 
     for adbreak in adbreaks:
 
@@ -246,12 +305,14 @@ def lambda_handler(event, context):
         media_dict['ad_avail_detail'] = ad_avail_detail
         media_dict['workflow_state'] = {'db_check':'na'}
 
-        list_for_step_functions_map.append(media_dict)
+        if media_dict['house_id'] not in unique_event_list:
+
+            list_for_step_functions_map.append(media_dict)
+            unique_event_list.append(media_dict['house_id'])
 
     event['detail']['clips']['video_workflow'] = list_for_step_functions_map
 
-
-
+    event['detail']['list'] = {}
     return event['detail']
 
 

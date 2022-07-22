@@ -2,12 +2,20 @@ import json
 import logging
 import datetime
 import dateutil.parser as dp
+import os
+import boto3
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
+s3bucket = os.environ['S3BUCKET']
+
 def lambda_handler(event, context):
     LOGGER.info(event)
+
+    # to track exceptions
+    exceptions = []
+    exceptions.clear()
 
     # arguments from API handler
     # return event['detail']['request'] # request uuid
@@ -23,6 +31,51 @@ def lambda_handler(event, context):
         total_seconds = int(h) * 3600 + int(m) * 60 + int(s)
 
         return {"s":total_seconds,"ms":total_ms}
+
+
+    def get_req_data(bucket,key):
+        LOGGER.info("Attempting to get request data json from S3: %s " % (key))
+
+        # s3 boto3 client initialize
+        s3_client = boto3.client('s3')
+
+        try:
+            s3_raw_response = s3_client.get_object(Bucket=bucket,Key=key)
+        except Exception as e:
+            msg = "Unable to get template %s from S3, got exception : %s" % (key,e)
+            LOGGER.error(msg)
+            exceptions.append(msg)
+            return msg
+
+        return json.loads(s3_raw_response['Body'].read())
+
+    def put_req_data(bucket,key,s3_data):
+        LOGGER.info("Attempting to update request data json with new data")
+        content_type = "application/json"
+
+        # s3 boto3 client initialize
+        s3_client = boto3.client('s3')
+
+        try:
+            s3_response = s3_client.put_object(Body=json.dumps(s3_data), Bucket=bucket, Key=key,ContentType=content_type, CacheControl='no-cache')
+            LOGGER.info("Put object to S3")
+            event['status'] = "Channel map updated successfully"
+        except Exception as e:
+            msg = "Unable to update channel map json, got exception : %s " % (e)
+            LOGGER.error(msg)
+            event['status'] = msg
+            exceptions.append(msg)
+
+
+
+    # Get request payload from S3 and put into event key
+    s3bucket = event['list_location'].split("/")[2]
+    s3key = '/'.join(event['list_location'].split("/")[3:])
+    request_list = json.loads(get_req_data(s3bucket,s3key))
+    if len(exceptions) > 0:
+        raise Exception(exceptions)
+    event['list'] = request_list
+
 
     channel_name = event['list']['PlayoutChannel']
 
@@ -361,6 +414,7 @@ def lambda_handler(event, context):
             LOGGER.info("Already looked at this event as a child event")
 
     event['channel_assembly_schedule'] = program_schedule
+    event['list'] = {}
     return event
 
     '''
