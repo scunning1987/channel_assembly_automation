@@ -163,7 +163,7 @@ def lambda_handler(event, context):
                             # else:
                             eom_milliseconds = (seg_duration_s_and_ms['s']*1000) + seg_duration_s_and_ms['ms'] + seg_som_milliseconds
 
-                            segments[seg_number] = {"start_ms":seg_som_milliseconds,"end_ms":eom_milliseconds}
+                            segments[seg_number] = {"start_ms":str(int(seg_som_milliseconds)),"end_ms":str(int(eom_milliseconds))}
 
 
             else: # Single segment
@@ -179,7 +179,7 @@ def lambda_handler(event, context):
                 # else:
                 eom_milliseconds = (duration_s_and_ms['s']*1000) + duration_s_and_ms['ms'] + som_milliseconds
 
-                segments[segment_number] = {"start_ms":som_milliseconds,"end_ms":eom_milliseconds}
+                segments[segment_number] = {"start_ms":str(int(som_milliseconds)),"end_ms":str(int(eom_milliseconds))}
 
 
 

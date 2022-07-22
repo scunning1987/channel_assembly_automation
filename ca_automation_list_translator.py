@@ -4,11 +4,15 @@ import datetime
 import dateutil.parser as dp
 import os
 import boto3
+from urllib.parse import urlparse
+
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
 s3bucket = os.environ['S3BUCKET']
+cdn_base_url = 'https://' + os.environ['CDN_DOMAIN_NAME']
+cdn_name = urlparse(cdn_base_url).netloc.replace(".","_")
 
 def lambda_handler(event, context):
     LOGGER.info(event)
@@ -99,7 +103,115 @@ def lambda_handler(event, context):
     scheduled_events = versio_list_json['ScheduledEvents']
     schedule_containers = versio_list_json['Containers']
 
+    evs = []
+    event_checked = []
+    break_index = 0
+    time_offset = 0
 
+
+    for n in range(0,len(scheduled_events)):
+
+        if n not in event_checked:
+            event_checked.append(n)
+
+            s = scheduled_events[n]
+
+            s_type = s['Type']
+            if s_type == "ProgramEvent":
+
+                house_id = s['PrimaryContent']['HouseId'].replace(" ","_").replace(".","_")
+                start_date_iso = s['Start']['Date']
+                start_time_hms = s['Start']['Timecode']
+                duration_hms = s['Duration']
+                duration_s_and_ms = hms_to_s(duration_hms)
+                parsed_start_date = dp.parse(start_date_iso)
+                start_date_epoch = int(parsed_start_date.strftime('%s'))
+                start_s_and_ms = hms_to_s(start_time_hms)
+                start_epochms = (start_date_epoch + start_s_and_ms['s']) * 1000 + int(start_s_and_ms['ms'])
+                ads_for_primary_event = []
+                types = []
+
+                avails = 0
+                avail_id = ""
+                ad_breaks = []
+
+                for cn in range(n+1,len(scheduled_events)):
+
+                    event_checked.append(cn)
+
+                    cs = scheduled_events[cn]
+
+                    cs_type = cs['Type']
+                    LOGGER.info("event type : %s , event num: %s " % (cs_type,cn))
+
+
+                    if cs_type == "NonProgramEvent":
+
+                        time_offset = (duration_s_and_ms['s'] * 1000) + int(duration_s_and_ms['ms'])
+
+                        cs_house_id = cs['PrimaryContent']['HouseId'].replace(" ","_").replace(".","_")
+                        if avail_id == "":
+                            avail_id = cs_house_id
+                        else:
+                            avail_id += "-" + cs_house_id
+
+                        avails += 1
+
+                        #ads_for_primary_event.append({"id":cs['PrimaryContent']['HouseId'],"type":cs_type,"seg_num":cs['PrimaryContent']['SegmentNumber']})
+
+
+                    if cs_type == "ProgramEvent":
+
+                        if cs['PrimaryContent']['HouseId'] == s['PrimaryContent']['HouseId'] and cs['PrimaryContent']['SegmentNumber'] > s['PrimaryContent']['SegmentNumber']:
+
+                            # create ad break for all ads encountered up to this
+                            if avails > 0:
+                                ad_break = {"MessageType":"SPLICE_INSERT","OffsetMillis":time_offset,"Slate":{"SourceLocationName":cdn_name,"VodSourceName":avail_id},"SpliceInsertMessage":{"AvailNum":break_index,"AvailsExpected":avails,"SpliceEventId":break_index,"UniqueProgramId":break_index}}
+                                ad_breaks.append(ad_break)
+                                break_index += 1
+
+                            avails = 0
+                            avail_id = ""
+
+                            # Calculate duration of the segment and add it to the program time offset
+                            cs_duration_hms = cs['Duration']
+                            cs_duration_s_and_ms = hms_to_s(cs_duration_hms)
+
+                            timeoffset += (cs_duration_s_and_ms['s'] * 1000) + int(cs_duration_s_and_ms['ms'])
+
+                        else:
+
+                            if avails > 0:
+                                break_index += 1
+
+                            event_checked.pop()
+
+                            break
+
+
+                    # else:
+                    #     break
+
+                #
+                # This is where we add to schedule
+                #
+
+                if avails > 0:
+                    ad_break = {"MessageType":"SPLICE_INSERT","OffsetMillis":time_offset,"Slate":{"SourceLocationName":cdn_name,"VodSourceName":avail_id},"SpliceInsertMessage":{"AvailNum":break_index,"AvailsExpected":avails,"SpliceEventId":break_index,"UniqueProgramId":break_index}}
+                    ad_breaks.append(ad_break)
+                program = {"ChannelName":channel_name,"ProgramName":house_id,"ScheduleConfiguration":{"Transition":{"RelativePosition":"BEFORE_PROGRAM","ScheduledStartTimeMillis":start_epochms,"Type":"ABSOLUTE"}},"AdBreaks":ad_breaks}
+                #evs.append({"id":s['PrimaryContent']['HouseId'],"type":s_type,"seg_num":s['PrimaryContent']['SegmentNumber'],"ads":ads_for_primary_event})
+                evs.append(program)
+
+                avails = 0
+                avail_id = ""
+
+    event['channel_assembly_schedule'] = evs
+    event['list'] = {}
+    return event
+
+
+    '''
     child_schedule_item = []
     break_index = 1
     for schedule_number in range(0,len(scheduled_events)):
@@ -149,7 +261,7 @@ def lambda_handler(event, context):
                 program_entry = {"ChannelName":channel_name,"ProgramName":program_name,"ScheduleConfiguration":{"Transition":{"RelativePosition":"BEFORE_PROGRAM","ScheduledStartTimeMillis":start_epochms,"Type":"ABSOLUTE"}},"AdBreaks":[]}
                 adbreak_template = {"MessageType":"SPLICE_INSERT","OffsetMillis":0,"Slate":{"SourceLocationName":"tbd","VodSourceName":"ad_house_id"},"SpliceInsertMessage":{"AvailNum":break_index,"AvailsExpected":2,"SpliceEventId":break_index,"UniqueProgramId":break_index}}
 
-                if total_segments == 0: # single segment program or ad slot
+                if total_segments < 2: # single segment program or ad slot
 
                     if item_type == "ProgramEvent":
                         LOGGER.info("this is a program: %s " % (title))
@@ -216,7 +328,7 @@ def lambda_handler(event, context):
                     if item_type == "ProgramEvent":
                         LOGGER.info("this is a multi-segment program: %s " % (title))
 
-                        if segment_number == 1:
+                        if segment_number == 1 or segment_number == 0:
                             #program_name = "%s_%s" % (house_id,str(start_epochms))
 
                             program_schedule.append(program_entry)
@@ -415,8 +527,8 @@ def lambda_handler(event, context):
 
     event['channel_assembly_schedule'] = program_schedule
     event['list'] = {}
-    return event
-
+    return event['channel_assembly_schedule']
+    '''
     '''
 
 

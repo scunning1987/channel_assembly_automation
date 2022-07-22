@@ -218,7 +218,8 @@ def lambda_handler(event, context):
 
 
     # Check if VOD Source exists
-    vod_source_name = event['house_id']
+    vod_source_name = '_'.join(event['house_id'].split("_")[0:-1])
+
     vod_source_location = '/'+'/'.join(event['output_path'].rsplit("/",3)[1:]) + ".m3u8"
 
     get_source_response = get_source(cdn_name,vod_source_name)
@@ -226,12 +227,13 @@ def lambda_handler(event, context):
     if len(get_source_response['VodSourceName']) < 1:
 
         # Create VOD Source
+        LOGGER.info("Creating VOD Source : %s " % (vod_source_name))
         source_create_response = create_source(vod_source_name,vod_source_location,cdn_name)
 
         source_create_response_json = emc_response_json = json.loads(json.dumps(source_create_response, default = lambda o: f"<<non-serializable: {type(o).__qualname__}>>"))
 
-        if len(exceptions) > 0:
-            raise Exception(exceptions)
+        # if len(exceptions) > 1:
+        #     raise Exception(exceptions)
 
         LOGGER.info("Created VOD Source")
 
